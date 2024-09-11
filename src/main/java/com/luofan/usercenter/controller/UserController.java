@@ -9,6 +9,7 @@ import com.luofan.usercenter.model.request.UserRegisterRequest;
 import com.luofan.usercenter.common.BaseResponse;
 import com.luofan.usercenter.common.ResultUtils;
 import com.luofan.usercenter.mapper.exception.BusinessException;
+import com.luofan.usercenter.model.vo.UserVO;
 import com.luofan.usercenter.service.UserService;
 import io.swagger.annotations.Api;
 import lombok.extern.slf4j.Slf4j;
@@ -196,4 +197,19 @@ public class UserController {
         return ResultUtils.success(userList);
     }
 
+
+    /**
+     * 获取最匹配的n个用户
+     * @param num
+     * @param request
+     * @return
+     */
+    @GetMapping("/match")
+    public BaseResponse<List<User>> matchUsers(long num,HttpServletRequest request){
+        if(num <= 0 || num > 20) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(userService.matchUser(num,loginUser));
+    }
 }

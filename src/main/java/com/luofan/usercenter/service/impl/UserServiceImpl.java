@@ -9,22 +9,24 @@ import com.luofan.usercenter.contant.UserConstant;
 import com.luofan.usercenter.mapper.exception.BusinessException;
 import com.luofan.usercenter.mapper.UserMapper;
 import com.luofan.usercenter.model.domain.User;
+import com.luofan.usercenter.model.vo.UserVO;
 import com.luofan.usercenter.service.UserService;
+import com.luofan.usercenter.utils.AlgorithmUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.math3.util.Pair;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.DigestUtils;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.sql.Array;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.luofan.usercenter.contant.UserConstant.ADMIN_ROLE;
 import static com.luofan.usercenter.contant.UserConstant.USER_LOGIN_STATE;
@@ -308,6 +310,48 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     @Override
     public boolean isAdmin(User loginUser) {
         return loginUser != null && loginUser.getUserRole() == ADMIN_ROLE;
+    }
+
+    /**
+     * 匹配用户
+     * @param num
+     * @param loginUser
+     * @return
+     */
+    @Override
+    public List<User> matchUser(long num, User loginUser) {
+        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        queryWrapper.select("id", "tags");
+        queryWrapper.isNotNull("tags");
+        List<User> userList = this.list(queryWrapper);
+        String tags = loginUser.getTags();
+        Gson gson = new Gson();
+        List<String> tagList = gson.fromJson(tags,new TypeToken<List<String>>() {}.getType());
+        //用户的下标 =》 相似度
+        List<Pair<User,Long>> list = new ArrayList<>();
+
+        for (int i = 0; i < userList.size(); i++) {
+            User user = userList.get(i);
+            String userTags = user.getTags();
+            //用户没有标签或当前用户
+            if(StringUtils.isBlank(userTags) || user.getId() == loginUser.getId()){
+                continue;
+            }
+            List<String> userTagList = gson.fromJson(userTags,new TypeToken<List<String>>() {}.getType());
+            //计算分数
+            long distance = AlgorithmUtils.minDistance(tagList,userTagList);
+            list.add(new Pair<>(user,distance));
+        }
+        List<Pair<User , Long>> topUserList = list.stream().sorted((a,b) -> (int)(a.getValue() - b.getValue())).limit(num).collect(Collectors.toList());
+        List<Long> userIdList = topUserList.stream().map(pair -> pair.getKey().getId()).collect(Collectors.toList());
+        QueryWrapper<User> userQueryWrapper = new QueryWrapper<>();
+        userQueryWrapper.in("id",userIdList);
+        Map<Long, List<User>> userIdListMap = this.list(userQueryWrapper).stream().map(user -> getSafetyUser(user)).collect(Collectors.groupingBy(User::getId));
+        List<User> finalUserList = new ArrayList<>();
+        for (Long userId : userIdList) {
+            finalUserList.add(userIdListMap.get(userId).get(0));
+        }
+        return finalUserList;
     }
 
 
